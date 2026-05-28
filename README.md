@@ -182,6 +182,53 @@ What we deliberately do NOT rewrite:
 
 Backup script was tested on the source machine; archive integrity verified with `tar -tzf` and the resulting MANIFEST.txt. Restore is intentionally idempotent and reversible (via the move-aside directory).
 
+## FAQ
+
+### Does it migrate files Claude created inside my project directory?
+
+**No.** The migration only copies Claude's own state directories (`~/.claude/`, `~/.claude.json`, `~/Library/Application Support/Claude/` on macOS or `%APPDATA%\Claude\` on Windows). Anything Claude wrote into your actual project — e.g. a new source file at `~/SRC/my-project/foo.py`, generated build artifacts, edited docs — lives in the **project working tree**, not in any Claude directory. Move project trees the way you'd move any code: `git push` / `git clone` if it's a git repo, or `rsync -av` if it isn't.
+
+After the project tree is on the new machine, the migration script's username remap will reconnect Claude's metadata to the new paths so `~/.claude/projects/-Users-newuser-SRC-my-project/` lines up with `/Users/newuser/SRC/my-project/`.
+
+Two narrow exceptions where Claude **does** keep generated files inside its own config directory, and which therefore DO migrate:
+
+1. **Cowork session outputs / uploads.** Each Cowork session has its own `outputs/` and `uploads/` directories under `~/Library/Application Support/Claude/local-agent-mode-sessions/<account>/<device>/local_<uuid>/`. Files Cowork explicitly exchanged with the host through the download / upload UI live there. They're inside the Claude config tree, so the backup grabs them.
+2. **File history snapshots.** `~/.claude/file-history/` contains content-hashed snapshots of files Claude has edited (for undo). These migrate too. They reference the original on-disk paths as metadata but don't replace the live files.
+
+Files that only ever existed **inside the Cowork sandbox VM** (and were never downloaded back to the host as outputs) are NOT migrated, because `vm_bundles/claudevm.bundle/rootfs.img` is intentionally skipped. Save anything you care about via Cowork's download UI before migrating.
+
+### Does it migrate my Cowork space's description / instructions prompt?
+
+**Yes.** Cowork "Spaces" and their per-space instructions are stored in:
+
+```
+~/Library/Application Support/Claude/local-agent-mode-sessions/<account>/<device>/spaces.json
+```
+
+Each entry looks roughly like:
+
+```json
+{
+  "id": "...",
+  "name": "Example space",
+  "folders": [{ "path": "/Users/USER/SRC/Projects/Example" }],
+  "instructions": "You are a senior reviewer for this codebase. Always ...",
+  "origin": "user"
+}
+```
+
+That file is inside the `local-agent-mode-sessions/` tree, which is already part of the backup whitelist. The username-remap step also rewrites the `folders[].path` values, so `/Users/olduser/...` becomes `/Users/newuser/...` correctly.
+
+Note that the **enabled-plugins list** for Cowork (`cowork_settings.json` in the same directory, plus `enabledPlugins` / `extraKnownMarketplaces`) also migrates. After restore, when you open Claude.app on the new machine and sign in, your Spaces — including names, instructions, linked folders, and enabled knowledge-work plugins — should appear without further action.
+
+### What about the Cowork sandbox's installed packages / VM state?
+
+Not migrated. The Cowork VM disk (`vm_bundles/claudevm.bundle/rootfs.img`, typically ~10 GB) is intentionally excluded. The new machine provisions a fresh VM on first Cowork launch. If you customized the sandbox (e.g. `apt install` of extra tools), you'll need to redo that after migration.
+
+### My friend's old machine is dead. Can I still restore?
+
+Only if you (a) have the backup archive from before it died, and (b) can re-authenticate Claude on the new machine (which uses OAuth — server-side, separate from the migration). Without the archive there's nothing to restore from; the migration script doesn't pull anything from Anthropic's servers. Make a backup *before* the old machine becomes inaccessible.
+
 ## Sources
 
 This script was designed by combining Anthropic's official Claude Code documentation, the official Claude.ai memory import/export support article, observations from inspecting an actual Claude Code + Claude Desktop install on macOS, and a few community references.
