@@ -131,21 +131,30 @@ The script captures any line in `~/.zshrc`/`~/.zshenv`/`~/.zprofile`/`~/.bashrc`
 
 ## What each Claude surface stores, and what we capture
 
-| Surface | Where it lives | Captured? | Notes |
-| --- | --- | --- | --- |
-| **claude.ai / Claude.app chats** (sidebar "chat" mode) | Server-side, per Anthropic account | n/a — re-login on the new Mac and they reappear | Claude.app and claude.ai are two clients of the same backend; chats are identical across them. Nothing on disk is needed to "transfer" them. |
-| **Claude.app chat memory** | Server-side, per account | Not via this script | Use the Settings → Capabilities → Memory export/import flow. |
-| **Claude Code CLI sessions** | `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl` | Yes | All projects + transcripts. |
-| **Claude Code panel inside Claude.app** | Metadata in `~/Library/Application Support/Claude/claude-code-sessions/`; transcripts share `~/.claude/projects/` with the CLI | Yes | The panel uses the bundled `claude` binary under the hood and writes to the same projects store as the CLI. |
-| **Cowork** (Local Agent Mode) — transcripts, audit logs, plans, per-session outputs/uploads, MCP perms | `~/Library/Application Support/Claude/local-agent-mode-sessions/<account>/<device>/local_<uuid>/` | Yes | Each session has its own `audit.jsonl`, `outputs/`, `uploads/`, and a private `.claude/projects/` jsonl. |
-| **Cowork** — the sandbox VM's *internal* filesystem | `~/Library/Application Support/Claude/vm_bundles/claudevm.bundle/rootfs.img` (10 GB) + `sessiondata.img` (1.4 GB) | **No** | This is an Apple Virtualization framework disk image, not session-scoped. We skip it to keep the archive small and because the new Mac will provision a fresh VM. If Cowork sessions contained in-progress work that only lives inside the VM (not yet downloaded to host as outputs), grab those files via Cowork's download UI before you migrate. |
-| **MCP servers (CLI)** | `~/.claude.json` (`mcpServers` key) + `.mcp.json` per repo | Yes for CLI scope; per-repo lives with your code | |
-| **MCP servers (Desktop) / Extensions** | `~/Library/Application Support/Claude/claude_desktop_config.json` + `Claude Extensions/` + `Claude Extensions Settings/` | Yes | Includes installed `.mcpb` extensions and their per-extension settings. |
-| **Plugins** | `~/.claude/plugins/` | Yes | |
-| **Auto memory** | `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md` and topic files | Yes | |
-| **User-level `CLAUDE.md` / rules** | `~/.claude/CLAUDE.md`, `~/.claude/rules/` | Yes | |
-| **OAuth tokens** | macOS Keychain | No | Re-login on the new Mac. |
-| **Caches, VM bundles, Electron browser state** | Various | No | Regenerate automatically. |
+**Legend:** ✓ migrated by this script · ✗ deliberately skipped · — handled outside this script (server-side, or moves with your repo).
+
+Paths below: `~/.claude/...` is the CLI; everything else under `Claude/` is shorthand for `~/Library/Application Support/Claude/` on macOS (`%APPDATA%\Claude\` on Windows).
+
+| Surface | ✓✗— | Where it lives + notes |
+|---|:---:|---|
+| Chats (claude.ai / Claude.app sidebar) | — | Anthropic servers, per account. Sign in on the new machine; both clients show the same conversations. |
+| Claude.app chat Memory | — | Anthropic servers. Use the [official import/export flow](https://support.claude.com/en/articles/12123587-import-and-export-your-memory-from-claude). |
+| Claude.app Projects (with knowledge files) | — | Anthropic servers. Distinct from Claude Code's local "projects" and Cowork's local "Spaces". |
+| Custom instructions / Styles | — | Anthropic servers. |
+| Claude Code CLI sessions | ✓ | `~/.claude/projects/<encoded-cwd>/*.jsonl` — every project + transcript. |
+| Claude Code panel (in Claude.app) | ✓ | Metadata in `Claude/claude-code-sessions/`; transcripts share `~/.claude/projects/` with the CLI. |
+| Claude Code auto memory | ✓ | `~/.claude/projects/<encoded-cwd>/memory/`. |
+| User `CLAUDE.md` + rules | ✓ | `~/.claude/CLAUDE.md`, `~/.claude/rules/`. |
+| Per-repo `CLAUDE.md` / `.mcp.json` / `.claude/` | — | Lives inside each repo. Moves with the code (git, rsync). |
+| Plugins | ✓ | `~/.claude/plugins/`. |
+| Cowork session data | ✓ | `Claude/local-agent-mode-sessions/<acct>/<dev>/local_<uuid>/` — transcripts, `audit.jsonl`, plans, `outputs/`, `uploads/`. |
+| Cowork Spaces (folders + instructions prompt) | ✓ | `…/local-agent-mode-sessions/<acct>/<dev>/spaces.json`. |
+| Cowork enabled plugins / marketplaces | ✓ | `…/local-agent-mode-sessions/<acct>/<dev>/cowork_settings.json` + `cowork_plugins/`. |
+| Cowork sandbox VM (rootfs + sessiondata) | ✗ | `Claude/vm_bundles/claudevm.bundle/` — ~11 GB Apple Virtualization image. New Mac provisions fresh. **Save in-VM work via Cowork's download UI before migrating** if it wasn't already downloaded back as an output. |
+| MCP servers — CLI scope | ✓ | `~/.claude.json` (`mcpServers` key). |
+| MCP servers — Desktop + Extensions | ✓ | `Claude/claude_desktop_config.json` + `Claude/Claude Extensions/` + `Claude/Claude Extensions Settings/`. Includes `.mcpb` extensions and per-extension settings. |
+| OAuth tokens | ✗ | macOS Keychain. Re-login on the new Mac (`claude` then sign in to Claude.app). |
+| Caches, Electron browser state, crash data | ✗ | Regenerate on first launch. |
 
 ## Different username on the new Mac
 
