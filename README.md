@@ -167,26 +167,32 @@ Paths below: `~/.claude/...` is the CLI; everything else under `Claude/` is shor
 
 ## Different username on the new Mac
 
-The backup tarball includes a `source.env` file that records the source `$HOME` and username. When you run `claude-restore.sh`, it compares the source username with the destination's `$HOME` and, if they differ, prompts to rewrite paths automatically.
+The archive embeds a `source.env` with the source `$HOME`/username. On restore, if the destination's `$HOME` differs, the script prompts to rewrite paths automatically.
 
-What gets rewritten:
+**Rewritten:**
 
-- `~/.claude.json` — the `projects` keys (`/Users/olduser/SRC/foo` → `/Users/newuser/SRC/foo`) and any other absolute-path references.
-- `~/.claude/projects/-Users-olduser-…/` directory names — renamed in place to `-Users-newuser-…`.
-- `.json`, `.jsonl`, `.md`, `.txt` files under `~/.claude/`, `claude-code-sessions/`, `local-agent-mode-sessions/`, and `Claude Extensions Settings/` — every `/Users/olduser/` and `-Users-olduser-` is rewritten.
-- The Claude Desktop preferences plist (binary plists are converted to XML first so sed can touch them).
-- `claude_desktop_config.json` and `config.json` — including the `localAgentModeTrustedFolders` Cowork pref and any MCP-server `env` paths.
+| Target | What changes |
+|---|---|
+| `~/.claude.json` | `projects` keys and other absolute-path references: `/Users/olduser/...` → `/Users/newuser/...`. |
+| `~/.claude/projects/-Users-olduser-…/` | Directory names renamed to `-Users-newuser-…`. |
+| `.json` / `.jsonl` / `.md` / `.txt` files under `~/.claude/`, `Claude/claude-code-sessions/`, `Claude/local-agent-mode-sessions/`, `Claude/Claude Extensions Settings/` | Every `/Users/olduser/` and `-Users-olduser-` is substituted. |
+| `Claude/claude_desktop_config.json`, `Claude/config.json` | Includes the `localAgentModeTrustedFolders` Cowork pref and MCP-server `env` paths. |
+| `~/Library/Preferences/com.anthropic.claudefordesktop.plist` | Binary plists are converted to XML first so `sed` can touch them. |
 
-Override flags:
+**Override flags:**
 
-- `--remap-to=USER` — force a different target username (otherwise `$(basename "$HOME")`).
-- `--no-remap` — leave all paths as the source's. Claude Code tolerates stale project keys, but Cowork's trusted folders and the filesystem extension's `allowed_directories` won't work until you fix them by hand.
+| Flag | Effect |
+|---|---|
+| `--remap-to=USER` | Force a target username (otherwise `$(basename "$HOME")`). |
+| `--no-remap` | Skip rewriting. CLI session metadata tolerates stale keys, but Cowork trusted folders and the filesystem extension's `allowed_directories` won't work until you fix them by hand. |
 
-What we deliberately do NOT rewrite:
+**Deliberately NOT rewritten:**
 
-- `~/.claude/file-history/*` — content-hashed snapshots of files Claude has edited. The hash filenames depend on the original content, so rewriting them would invalidate the lookup. References to the old `/Users/olduser/` path inside these snapshots are historical metadata, not active config.
-- `audit.jsonl` transcripts inside `local-agent-mode-sessions/.../local_<uuid>/` — these are immutable records of past Cowork conversations (with HMACs). Rewriting them would invalidate the HMAC and isn't useful: it's history, not state.
-- Anything that doesn't end in `.json`, `.jsonl`, `.md`, or `.txt` — to keep the remap safe.
+| Item | Why |
+|---|---|
+| `~/.claude/file-history/*` | Content-hashed snapshots. Rewriting them would invalidate the hash lookup; the old paths are historical metadata, not active config. |
+| `audit.jsonl` inside `Claude/local-agent-mode-sessions/.../local_<uuid>/` | Immutable HMAC-signed records of past Cowork conversations. Rewriting would invalidate the HMACs and there's no reason to — it's history, not state. |
+| Anything not matching `*.json` / `*.jsonl` / `*.md` / `*.txt` | Keeps the remap from touching binary files or unintended content. |
 
 ## Safety
 
