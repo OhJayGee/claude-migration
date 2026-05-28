@@ -229,6 +229,90 @@ Not migrated. The Cowork VM disk (`vm_bundles/claudevm.bundle/rootfs.img`, typic
 
 Only if you (a) have the backup archive from before it died, and (b) can re-authenticate Claude on the new machine (which uses OAuth — server-side, separate from the migration). Without the archive there's nothing to restore from; the migration script doesn't pull anything from Anthropic's servers. Make a backup *before* the old machine becomes inaccessible.
 
+### Where is the line between "lives on my machine" and "lives in Anthropic's cloud"?
+
+Anything tied to your **Anthropic account identity** is server-side and follows the account, not the machine. Anything that names a **filesystem path**, runs against a **local process**, or caches local state is on your machine and is what this migration tool exists to move.
+
+| Lives in the cloud (no migration needed — just sign in on the new machine) | Lives on your machine (this tool migrates it) |
+| --- | --- |
+| All claude.ai / Claude.app chat conversations and their artifacts | Claude Code CLI session transcripts (`~/.claude/projects/<encoded-cwd>/*.jsonl`) |
+| Claude.app **Memory** (the cross-conversation memory feature) | Claude Code **auto memory** (`~/.claude/projects/<encoded-cwd>/memory/`) and user `CLAUDE.md` |
+| Claude.app / claude.ai **Projects** (with their uploaded knowledge files and project instructions) | Claude Code "projects" entries in `~/.claude.json` (just paths + trust state) |
+| **Custom instructions / Styles** in Claude.app preferences | Cowork **Space instructions** (`spaces.json`) |
+| Your subscription / plan / billing | Claude Code plugins, skills, agents, statusline scripts |
+| Claude.app theme + sidebar mode (re-applied per account at sign-in) | Window positions and per-machine UI state (`Preferences`, `window-state.json`) |
+| Conversation usage history / cost reports | Local cache of usage stats (`stats-cache.json`, deliberately skipped — Claude refetches) |
+
+Rule of thumb: **if it appears immediately after you sign in on a fresh device with no migration, it's server-side**. Chat history, Memory, Projects, Styles, and account settings are all in that bucket.
+
+### What about my claude.ai "Projects" — the ones with project knowledge / instructions?
+
+Server-side, per account. Sign in on the new machine and they're all there. The Claude.app sidebar will repopulate from Anthropic's API. Don't confuse these with **Cowork Spaces** (local-only, migrated by this tool — see the Space-description FAQ above) or with **Claude Code's `~/.claude/projects/` entries** (also local-only, also migrated — these track CLI/panel sessions, not knowledge-base projects).
+
+### What about Claude.app theme / appearance / design preferences?
+
+Mostly server-side. Theme, sidebar mode, "compact" view, color scheme, and similar UI choices are stored per account and applied on first sign-in to any device. Locally cached UI state — last window size, scroll positions, pinned panels — lives in `Preferences` and `window-state.json` and *does* migrate, but it's not worth worrying about: a couple of clicks on the new machine reconfigures whatever doesn't carry across.
+
+### How do the different "memory" layers relate, and which one migrates?
+
+There are three distinct mechanisms with confusingly similar names:
+
+| Layer | Where it lives | Migrates via this tool? |
+| --- | --- | --- |
+| **Claude.app Memory** — the cross-conversation memory feature you see in Settings → Capabilities → Memory | Anthropic servers, per account | No (not needed). Sign in on the new machine and it's there. To copy between accounts, use the [official import/export flow](https://support.claude.com/en/articles/12123587-import-and-export-your-memory-from-claude). |
+| **Claude Code auto memory** — notes Claude takes inside `~/.claude/projects/<encoded-cwd>/memory/MEMORY.md` | Local, per project under `~/.claude/projects/` | **Yes** — included automatically. |
+| **`CLAUDE.md` files** — the human-written persistent instructions | User-level `~/.claude/CLAUDE.md` is local; project-level `CLAUDE.md` lives inside each repo | User-level: **yes**. Project-level: travels with the repo via git/rsync, not via this tool. |
+
+### Will all my MCP servers and Claude Extensions work on the new machine?
+
+Mostly, but two ways they can break:
+
+1. **Hard-coded paths in MCP `command` / `env`.** Your `claude_desktop_config.json` (or `~/.claude.json` for the CLI) may have entries like `"command": "/opt/homebrew/bin/codex"` or `"env": { "HOME": "/Users/olv" }`. If the new machine is the same architecture and has Homebrew at the same path, these still work. If you've switched from Apple Silicon to Intel Mac (where Homebrew lives at `/usr/local/bin/...`) or to a different package manager, you'll need to edit the JSON.
+2. **API keys / tokens for MCP servers** (GitHub PAT, OpenAI key, etc.). If they're in your shell rc, they were captured into `env-vars.txt` and you paste them manually. If they're stored inside an MCP's own config (e.g. an extension's settings JSON), they migrate as part of `Claude Extensions Settings/` — but anything stored in macOS Keychain does not migrate and must be re-entered.
+
+After restore, run `claude mcp list` (CLI) and check the MCP panel in Claude.app to confirm everything connects. Look in `~/Library/Logs/Claude/mcp-server-*.log` if an MCP doesn't show up.
+
+### Will my Claude Extensions work if I'm migrating between different CPU architectures?
+
+Possibly not for some of them. Several MCP extensions ship `node_modules` with prebuilt native bindings — on this machine I see `darwin-arm64` builds of `fsevents`, `lightningcss`, `@napi-rs/canvas`, `@rolldown/binding`, etc. inside `Claude Extensions/`. Those `.node` files are architecture-specific.
+
+- **Same arch Mac → Mac** (e.g. Apple Silicon → Apple Silicon): everything works.
+- **Apple Silicon → Intel Mac** (or vice versa): extensions with native bindings will likely fail to load. The fix is to uninstall and reinstall those extensions on the new machine after migration — settings (`Claude Extensions Settings/*.json`) will be reused if the extension is reinstalled with the same id.
+- **Mac → Windows / Windows → Mac**: this tool refuses to do cross-platform migration entirely, partly for exactly this reason.
+
+### Will the Anthropic Chrome extension still be paired after migration?
+
+No, you'll need to re-pair. The `chromeExtension.pairedDeviceId` value in `claude_desktop_config.json` is an identifier for the *browser on the old machine*. The new machine's browser is a different "device" from Claude.app's point of view, so after migration: install the Anthropic Chrome extension in Chrome on the new machine and run through the pair-this-device flow again from Claude.app's settings.
+
+### What about macOS notification / accessibility / Full Disk Access permissions?
+
+Those are stored by macOS in a per-machine database (`TCC.db`), not in any user-readable config file, and they explicitly do not transfer across machines for security reasons. On the new Mac, the first time Claude.app or Claude Code needs to read your screen, post a notification, or watch the filesystem, macOS will re-prompt for permission. Grant it then.
+
+### Can I resume a Claude Code session that was active on the old machine?
+
+The session transcript and its plan migrate (everything Claude Code writes to `~/.claude/projects/.../` and `~/.claude/plans/`), so on the new machine you can do `claude --continue` or `claude --resume <sessionId>` and pick up the conversation. What does NOT migrate:
+
+- Any background subprocess that was running (`claude --loop`, a long shell command Claude had spawned, an MCP server's in-flight request). Those are dead the moment the old machine goes offline.
+- Open IDE state, terminal scrollback, browser tabs Claude was driving via the Chrome extension.
+
+For background `/schedule` items: the metadata that defines a schedule migrates with the rest of `~/.claude/`, but the actual firing depends on Claude Code being launched. If your schedules required a launchd entry or cron job, those live in `~/Library/LaunchAgents/` or `crontab -e` — not in `~/.claude/` — and would need to be set up by hand on the new machine. (On this install there's no Claude-related crontab or LaunchAgent beyond Claude.app's auto-updater, so for most users this is a non-issue.)
+
+### I have multiple Anthropic accounts on this machine. Does that work?
+
+Yes. Inside `local-agent-mode-sessions/`, `claude-code-sessions/`, and a few other paths, Claude separates data by **account UUID** as a subdirectory. The backup grabs all account subdirectories. On the new machine, you'll need to sign into each account once for its data to come back online.
+
+### Is anything sensitive in the archive? Can I share it with someone to debug a problem?
+
+Yes, the archive is sensitive. It contains, at minimum:
+
+- The full content of every Claude Code session you've ever run (`~/.claude/projects/.../*.jsonl`) — including code, commit messages, and anything you pasted into Claude.
+- Every Cowork session's audit log (`local-agent-mode-sessions/.../audit.jsonl`), which records every message in both directions.
+- Your Claude account UUID, statsig user ID, and various device IDs.
+- The contents of `claude_desktop_config.json` and `Claude Extensions Settings/*.json`, which may include API keys (e.g. OpenAI / Gemini keys in MCP `env` blocks or `__encrypted__` placeholders that on inspection turn out to be obfuscated, not encrypted).
+- File-history snapshots of files Claude has edited.
+
+Treat the archive like a copy of your home directory: don't post it publicly; if you must share for debugging, redact MCP `env` blocks and `Claude Extensions Settings/*.json` first, or share only the specific files you're debugging. The archive does **not** contain your Anthropic OAuth token (that lives in the macOS Keychain and is intentionally not migrated).
+
 ## Sources
 
 This script was designed by combining Anthropic's official Claude Code documentation, the official Claude.ai memory import/export support article, observations from inspecting an actual Claude Code + Claude Desktop install on macOS, and a few community references.
