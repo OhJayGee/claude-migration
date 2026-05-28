@@ -301,6 +301,20 @@ For background `/schedule` items: the metadata that defines a schedule migrates 
 
 Yes. Inside `local-agent-mode-sessions/`, `claude-code-sessions/`, and a few other paths, Claude separates data by **account UUID** as a subdirectory. The backup grabs all account subdirectories. On the new machine, you'll need to sign into each account once for its data to come back online.
 
+### What about Claude for Excel, PowerPoint, and Word?
+
+Those are **Microsoft Office Add-ins**, distributed through Microsoft AppSource and managed entirely by Office, not by Claude.app or Claude Code. They don't write anything into `~/Library/Application Support/Claude/` or `~/.claude/`, so this migration tool deliberately doesn't touch them — there's nothing on the Claude side to grab.
+
+How the Office add-ins actually migrate:
+
+- **The add-in install** is tied to your Microsoft 365 account / Office tenant, not to the machine. Sign into Office on the new computer and the add-in is available in the same place (Insert → Add-ins → My Add-ins, or the Home ribbon's Claude button if you'd previously pinned it).
+- **Your Claude authentication inside the add-in** is a separate per-device sign-in. The add-in runs in a sandboxed web view inside Office, with its own session — sign-in does *not* carry across machines and isn't shared with Claude.app on the same Mac either.
+- **Per-add-in cached data** (mostly transient session state) lives inside Office's per-app containers at `~/Library/Containers/com.microsoft.{Excel,Word,Powerpoint}/Data/Documents/wef/` on macOS. Office regenerates this on first use; not worth backing up.
+
+So the migration steps for the Office side are: install / sign into Office on the new Mac, open the Claude add-in once in each app, sign in with your Anthropic account. The migration script handles none of this and doesn't need to.
+
+If you've been using **Claude for Sheets / Docs / Slides on Google Workspace** instead, the same answer applies — those are Google add-ons, also tied to your Google account, also outside this tool's scope.
+
 ### Is anything sensitive in the archive? Can I share it with someone to debug a problem?
 
 Yes, the archive is sensitive. It contains, at minimum:
