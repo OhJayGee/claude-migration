@@ -25,6 +25,16 @@ Treat this as a v0.1 of a community tool, not a battle-tested utility.
 
 Cross-platform migrations (Mac→Windows or Windows→Mac) are **not** supported by these scripts: the encoded project-directory format is platform-specific (`/Users/olv` becomes `-Users-olv-` on macOS, but `C:\Users\olv` becomes `-C--Users-olv-` on Windows). The restore script will detect a cross-platform archive and refuse to run.
 
+## At a glance
+
+```mermaid
+flowchart LR
+    A["Old machine"] -->|"./claude-backup"| B[("archive<br/>.tar.gz / .zip")]
+    B -->|"copy: AirDrop / scp / USB"| C["New machine"]
+    C -->|"./claude-restore<br/>auto-detects username"| D["Working Claude install"]
+    D -->|"one-off"| E["claude login<br/>+ Claude.app sign-in"]
+```
+
 ## TL;DR (macOS)
 
 ```bash
@@ -256,6 +266,26 @@ Only if you (a) have the backup archive from before it died, and (b) can re-auth
 ### Where is the line between "lives on my machine" and "lives in Anthropic's cloud"?
 
 Anything tied to your **Anthropic account identity** is server-side and follows the account, not the machine. Anything that names a **filesystem path**, runs against a **local process**, or caches local state is on your machine and is what this migration tool exists to move.
+
+```mermaid
+flowchart TB
+    subgraph srv["Anthropic servers (per account)"]
+        c1["Chats, Memory, Projects"]
+        c2["Custom instructions / Styles"]
+        c3["Subscription / billing"]
+    end
+    subgraph mig["This machine - migrated by the tool"]
+        l1["~/.claude/<br/>CLI sessions, auto-memory, plugins, CLAUDE.md"]
+        l2["~/.claude.json<br/>MCP servers, project keys"]
+        l3["Claude/local-agent-mode-sessions/<br/>Cowork transcripts, Spaces, outputs"]
+        l4["Claude/Claude Extensions/<br/>MCP extensions + settings"]
+    end
+    subgraph skip["This machine - NOT migrated"]
+        s1["macOS Keychain<br/>OAuth tokens"]
+        s2["vm_bundles/<br/>Cowork sandbox VM"]
+        s3["Caches, Electron browser state"]
+    end
+```
 
 | Lives in the cloud (no migration needed — just sign in on the new machine) | Lives on your machine (this tool migrates it) |
 | --- | --- |
