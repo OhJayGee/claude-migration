@@ -113,21 +113,30 @@ The script captures any line in `~/.zshrc`/`~/.zshenv`/`~/.zprofile`/`~/.bashrc`
 
 ## What gets skipped (and why)
 
-- **Caches**: `Cache/`, `Code Cache/`, `GPUCache/`, `Dawn*Cache/`, `~/.claude/cache`, `image-cache`, `paste-cache`, `shell-snapshots`, `~/Library/Caches/claude-*`. Regenerate automatically.
-- **Local VM images**: `vm_bundles/` (often 5-10 GB), `claude-code-vm/`, `claude-code/` (versioned runtime caches). Recreated on first launch.
-- **Electron browser state**: `Cookies*`, `IndexedDB/`, `Local Storage/`, `Session Storage/`, `Trust Tokens*`, `TransportSecurity`, etc. You'll re-login on the new machine anyway.
-- **Crash/telemetry**: `Crashpad/`, `sentry/`, `~/Library/Logs/Claude/`, `~/.claude/telemetry`, `~/.claude/debug`, `security_warnings_state_*.json`.
-- **Auth credentials**: Anthropic OAuth tokens live in the **macOS Keychain**, not in any of these files. They do not transfer through the archive. After restore, run `claude` once and complete the OAuth flow; launch Claude.app and sign in.
-- **The `claude` binary itself**: install separately via `curl -fsSL https://claude.ai/install.sh | bash` (or whatever method your friend uses).
+Things the backup deliberately leaves out, because including them would either bloat the archive or break on the new machine.
 
-## What does NOT transfer via this script
+| Skipped | Why |
+|---|---|
+| Caches: `Cache/`, `Code Cache/`, `GPUCache/`, `Dawn*Cache/`, `~/.claude/cache`, `image-cache`, `paste-cache`, `shell-snapshots`, `~/Library/Caches/claude-*` | Regenerate on first launch. |
+| Versioned runtime caches: `vm_bundles/`, `claude-code-vm/`, `claude-code/` | 5–10 GB each. The new machine downloads or re-provisions them. |
+| Electron browser state: `Cookies*`, `IndexedDB/`, `Local Storage/`, `Session Storage/`, `Trust Tokens*`, `TransportSecurity` | You'll sign in again on the new machine anyway. |
+| Crash + telemetry: `Crashpad/`, `sentry/`, `~/Library/Logs/Claude/`, `~/.claude/telemetry`, `~/.claude/debug`, `security_warnings_state_*.json` | Diagnostic data tied to the old machine. |
+| Anthropic OAuth tokens | Stored in macOS Keychain, not in any file. Re-login after restore. |
+| The `claude` binary itself | Install with `curl -fsSL https://claude.ai/install.sh \| bash` (or your usual method). |
 
-1. **Chat memory** in Claude.app / claude.ai (the cross-conversation memory feature). Move it with the official import/export: <https://support.claude.com/en/articles/12123587>.
-2. **Anthropic API keys** in your shell rc — those are captured into `env-vars.txt` but you must paste them into the new machine's shell rc yourself.
-3. **GitHub / cloud / MCP tokens** kept in environment variables — same as above.
-4. **macOS Keychain entries** — re-authenticate on the new machine.
-5. **Per-repo `.claude/` directories**, `CLAUDE.md`, `.mcp.json`, `CLAUDE.local.md` inside each project. Those live alongside your code; move them with your normal repo workflow (git pull / clone / rsync of source trees).
-6. **Source code your projects refer to** (e.g. `/Users/you/SRC/foo/`). The migration only carries Claude's metadata about these projects (paths, trust state, per-project auto-memory, session transcripts). Move the working trees themselves with git or rsync, exactly as you would for any code.
+## After restore: things you still need to do yourself
+
+The archive carries everything Claude stored on disk; a few things live elsewhere and need a one-off step on the new machine.
+
+| Task | How |
+|---|---|
+| Sign in to Claude Code CLI | Run `claude`, complete the OAuth flow in the browser. |
+| Sign in to Claude.app | Launch the app, sign in. MCP extensions and Cowork sessions appear after sign-in. |
+| Re-import Claude.app chat Memory **(only if moving across accounts)** | Use [Anthropic's memory import/export](https://support.claude.com/en/articles/12123587-import-and-export-your-memory-from-claude). Same account = nothing to do; Memory is server-side. |
+| API keys & service tokens from your shell rc | Captured into `env-vars.txt` in the archive — paste into the new machine's `~/.zshrc` / `~/.zshenv`. |
+| MCP-server / third-party credentials stored in macOS Keychain | Re-enter when the extension prompts you. |
+| Per-repo `CLAUDE.md`, `.mcp.json`, `.claude/` directories | Travel with the repo. `git clone` / `git pull` / `rsync` of the working tree brings them along. |
+| Source code in your project trees (e.g. `~/SRC/foo/`) | Move with the same workflow you'd use for any code. The migration only carries Claude's *metadata* about these projects (paths, trust state, auto-memory, session transcripts) — not the files inside them. |
 
 ## What each Claude surface stores, and what we capture
 
