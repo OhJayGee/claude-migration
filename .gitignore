@@ -1,0 +1,18 @@
+# Backup archives produced by claude-backup.sh / claude-backup.ps1
+*.tar.gz
+*.zip
+
+# Restore safety net (created by claude-restore.sh / claude-restore.ps1)
+claude-pre-restore-*/
+
+# Local test scaffolding
+fake-home-*/
+/tmp/test-remap.sh
+
+# macOS junk
+.DS_Store
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
