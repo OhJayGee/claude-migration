@@ -17,22 +17,26 @@ ARCHIVE=""
 DRY_RUN=0
 REMAP_USER=""        # explicit target username; empty = derive from $HOME
 NO_REMAP=0           # if set, skip path remapping even when usernames differ
+SKIP_PROJECTS=0      # if set, don't restore bundled project working trees
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --dry-run)     DRY_RUN=1; shift ;;
-    --no-remap)    NO_REMAP=1; shift ;;
-    --remap-to=*)  REMAP_USER="${1#*=}"; shift ;;
-    --remap-to)    REMAP_USER="$2"; shift 2 ;;
+    --dry-run)        DRY_RUN=1; shift ;;
+    --no-remap)       NO_REMAP=1; shift ;;
+    --skip-projects)  SKIP_PROJECTS=1; shift ;;
+    --remap-to=*)     REMAP_USER="${1#*=}"; shift ;;
+    --remap-to)       REMAP_USER="$2"; shift 2 ;;
     -h|--help)
       cat <<EOF
-Usage: $0 <archive.tar.gz> [--dry-run] [--no-remap] [--remap-to=USER]
+Usage: $0 <archive.tar.gz> [--dry-run] [--no-remap] [--remap-to=USER] [--skip-projects]
 
-  --dry-run        Show what would be restored and remapped, write nothing.
-  --no-remap       Don't rewrite any paths even if source and destination
-                   usernames differ.
-  --remap-to USER  Force the destination username (otherwise auto-detected
-                   from \$HOME).
+  --dry-run         Show what would be restored and remapped, write nothing.
+  --no-remap        Don't rewrite any paths even if source and destination
+                    usernames differ.
+  --remap-to USER   Force the destination username (otherwise auto-detected
+                    from \$HOME).
+  --skip-projects   Don't restore bundled project working trees even if the
+                    archive contains them.
 EOF
       exit 0
       ;;
@@ -124,6 +128,21 @@ if (( DRY_RUN )); then
     echo "  in JSON/JSONL/MD/TXT files under ~/.claude, claude-code-sessions,"
     echo "  local-agent-mode-sessions, and the desktop plist; project directory"
     echo "  names under ~/.claude/projects/ will be renamed accordingly."
+  fi
+  if [[ -d "$STAGE/projects" && -f "$STAGE/projects/.paths.txt" && $SKIP_PROJECTS == 0 ]]; then
+    echo
+    COUNT=$(wc -l < "$STAGE/projects/.paths.txt" | tr -d ' ')
+    PROJ_SIZE=$(du -sh "$STAGE/projects" 2>/dev/null | awk '{print $1}')
+    echo "[restore] DRY-RUN — archive includes $COUNT project director(y/ies), total $PROJ_SIZE."
+    echo "[restore] DRY-RUN — would restore (after username remap):"
+    while IFS= read -r p; do
+      [[ -n "$p" ]] || continue
+      if (( NEED_REMAP )) && (( ! NO_REMAP )); then
+        echo "    ${p//\/Users\/$SOURCE_USER\//\/Users\/$DEST_USER\/}"
+      else
+        echo "    $p"
+      fi
+    done < "$STAGE/projects/.paths.txt"
   fi
   exit 0
 fi
@@ -264,6 +283,42 @@ if (( NEED_REMAP )) && (( ! NO_REMAP )); then
     remap_paths "$SOURCE_USER" "$DEST_USER"
   else
     echo "[remap] Skipped."
+  fi
+fi
+
+# ---------- Optional: restore bundled project working trees ----------
+if [[ -d "$STAGE/projects" && -f "$STAGE/projects/.paths.txt" && $SKIP_PROJECTS == 0 ]]; then
+  echo
+  COUNT=$(wc -l < "$STAGE/projects/.paths.txt" | tr -d ' ')
+  PROJ_SIZE=$(du -sh "$STAGE/projects" 2>/dev/null | awk '{print $1}')
+  echo "[restore] Archive includes $COUNT project director(y/ies), total $PROJ_SIZE."
+  echo "[restore] Each will be restored to its original path (with username remap if needed)."
+  echo "[restore] Existing directories at those paths will be moved aside to $PRE/projects/."
+  read -r -p "Restore project trees now? [Y/n] " yn
+  if [[ -z "$yn" || "$yn" =~ ^[Yy] ]]; then
+    while IFS= read -r src_path; do
+      [[ -n "$src_path" ]] || continue
+      stage_path="$STAGE/projects${src_path}"
+      [[ -d "$stage_path" ]] || { echo "[restore]   missing in archive, skipping: $src_path"; continue; }
+
+      if (( NEED_REMAP )) && (( ! NO_REMAP )); then
+        dst_path="${src_path//\/Users\/$SOURCE_USER\//\/Users\/$DEST_USER\/}"
+      else
+        dst_path="$src_path"
+      fi
+
+      if [[ -e "$dst_path" ]]; then
+        BACKUP_NAME="$PRE/projects$dst_path"
+        mkdir -p "$(dirname "$BACKUP_NAME")"
+        mv "$dst_path" "$BACKUP_NAME"
+        echo "[restore]   moved aside existing: $dst_path"
+      fi
+      mkdir -p "$dst_path"
+      rsync -a "$stage_path/" "$dst_path/"
+      echo "[restore]   restored: $dst_path"
+    done < "$STAGE/projects/.paths.txt"
+  else
+    echo "[restore] Project tree restore skipped."
   fi
 fi
 

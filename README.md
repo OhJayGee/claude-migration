@@ -148,6 +148,64 @@ The archive carries everything Claude stored on disk; a few things live elsewher
 | Per-repo `CLAUDE.md`, `.mcp.json`, `.claude/` directories | Travel with the repo. `git clone` / `git pull` / `rsync` of the working tree brings them along. |
 | Source code in your project trees (e.g. `~/SRC/foo/`) | Move with the same workflow you'd use for any code. The migration only carries Claude's *metadata* about these projects (paths, trust state, auto-memory, session transcripts) — not the files inside them. |
 
+## Optional: bundle project working trees
+
+By default the script migrates only Claude's *metadata* about your projects — the session transcripts, auto-memory, MCP config, plugin state, etc. The actual source code in your project directories is left alone (move it with `git push`/`clone` or `rsync`, the way you'd move any code).
+
+If your projects don't have a git remote, or you want a single-archive workflow that carries everything in one tarball, pass `--include-projects` to the backup:
+
+```bash
+./claude-backup.sh --include-projects                      # filtered (recommended)
+./claude-backup.sh --include-projects --no-default-excludes  # verbatim
+```
+
+PowerShell equivalent:
+
+```powershell
+.\claude-backup.ps1 -IncludeProjects                     # filtered (recommended)
+.\claude-backup.ps1 -IncludeProjects -NoDefaultExcludes  # verbatim
+```
+
+### What the script discovers
+
+| Source | What's read |
+|---|---|
+| `~/.claude.json` | every key under `projects` (full absolute paths) |
+| `Claude/local-agent-mode-sessions/*/*/spaces.json` | every Cowork Space's `folders[].path` |
+
+After deduplication, paths that don't exist on disk are dropped. So are paths that are too broad to bundle safely: the user's `$HOME` itself, and any top-level system folder (`Downloads`, `Desktop`, `Documents`, `Pictures`, `Music`, `Movies`/`Videos`, `Library`, `Applications`, `.Trash`, `OneDrive`, `AppData`).
+
+The script then prints the surviving list with per-path sizes plus a total, and asks for confirmation before bundling. You can stop here if the list is wrong.
+
+### Default excludes (filtered mode)
+
+Junk directories and files the script skips by default:
+
+```
+.git/   node_modules/   __pycache__/   .venv/   venv/   .next/
+dist/   build/   target/   .idea/   .vscode/
+.DS_Store   Thumbs.db   desktop.ini   *.pyc
+```
+
+These usually account for 90 %+ of project size and are easily rebuilt on the new machine. Pass `--no-default-excludes` (bash) or `-NoDefaultExcludes` (PowerShell) to skip the filters entirely.
+
+### Restore behavior
+
+On the new machine, `claude-restore.sh` detects bundled projects via the `projects/.paths.txt` index inside the archive, then prompts before restoring. For each project:
+
+1. The destination path is computed (with username remap if applicable).
+2. If something already exists at the destination, it's moved to `~/claude-pre-restore-<ts>/projects/...` so the restore is undoable.
+3. The project is unpacked from the archive into the destination path.
+
+Pass `--skip-projects` (bash) or `-SkipProjects` (PowerShell) to ignore bundled projects even if the archive contains them.
+
+### Trade-offs to know
+
+- **Archive size**: filtered bundling typically adds 100 MB – a few GB, depending on how much code lives outside `.git/node_modules/build`. Verbatim mode (`--no-default-excludes`) can multiply that by 5–10×.
+- **Not a substitute for git**: if a project has a git remote, that remote is canonical. Bundling adds an extra copy of code that's already preserved elsewhere. Use this option mainly for repos without remotes, or for non-git working dirs (notes, downloads, scratch).
+- **Privacy**: the archive will contain every file in every bundled project (filtered or not). Treat the archive as if it were a `tar` of your `$HOME/SRC/`.
+- **node_modules / build outputs are intentionally lost**: that's by design. Run `npm install` / `pip install -r requirements.txt` / etc. on the new machine.
+
 ## What each Claude surface stores, and what we capture
 
 **Legend:** ✓ migrated by this script · ✗ deliberately skipped · — handled outside this script (server-side, or moves with your repo).

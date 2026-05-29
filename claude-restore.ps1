@@ -23,6 +23,7 @@ param(
   [string] $Archive,
   [switch] $DryRun,
   [switch] $NoRemap,
+  [switch] $SkipProjects,
   [string] $RemapTo = ""
 )
 
@@ -231,6 +232,54 @@ if ($NeedRemap -and -not $NoRemap) {
     Remap-Paths -SrcUser $SourceUser -DstUser $DestUser
   } else {
     Log "[remap] Skipped."
+  }
+}
+
+# ---------- Optional: restore bundled project working trees ----------
+$projStage = Join-Path $Stage "projects"
+$pathsIdx  = Join-Path $projStage ".paths.txt"
+if (-not $SkipProjects -and (Test-Path $projStage) -and (Test-Path $pathsIdx)) {
+  $entries = Get-Content $pathsIdx | Where-Object { $_ -and $_.Trim() }
+  $count = $entries.Count
+  $bytes = (Get-ChildItem -Recurse -File $projStage -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+  $human = if ($bytes -gt 1GB) { "{0:N1} GB" -f ($bytes/1GB) }
+           elseif ($bytes -gt 1MB) { "{0:N1} MB" -f ($bytes/1MB) }
+           else { "{0:N0} KB" -f ($bytes/1KB) }
+  Write-Host ""
+  Log "Archive includes $count project director(y/ies), total $human."
+  Log "Each will be restored to its original path (with username remap if needed)."
+  Log "Existing directories at those paths will be moved aside to $Pre\projects\."
+  $ans = Read-Host "Restore project trees now? [Y/n]"
+  if ($ans -eq "" -or $ans -match '^[Yy]') {
+    foreach ($srcPath in $entries) {
+      # Decode "$projStage\C\Users\foo\bar" back to "C:\Users\foo\bar"
+      $drive = $srcPath.Substring(0,1)
+      $rest  = $srcPath.Substring(3)
+      $stagePath = Join-Path $projStage (Join-Path $drive $rest)
+      if (-not (Test-Path $stagePath)) {
+        Log "  missing in archive, skipping: $srcPath"
+        continue
+      }
+
+      $dstPath = $srcPath
+      if ($NeedRemap -and -not $NoRemap) {
+        $dstPath = $srcPath -replace ("\\Users\\" + [regex]::Escape($SourceUser) + "\\"), ("\Users\$DestUser\")
+      }
+
+      if (Test-Path -LiteralPath $dstPath) {
+        $rel = $dstPath.Substring(0,1) + $dstPath.Substring(2)  # "C:\Users\..."  ->  "C\Users\..."
+        $bakDir = Join-Path $Pre (Join-Path "projects" $rel)
+        $parent = Split-Path $bakDir -Parent
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        Move-Item -LiteralPath $dstPath -Destination $bakDir -Force
+        Log "  moved aside existing: $dstPath"
+      }
+      New-Item -ItemType Directory -Path $dstPath -Force | Out-Null
+      robocopy "$stagePath" "$dstPath" /E /COPY:DAT /R:1 /W:1 /NFL /NDL /NP /NS /NC /NJH /NJS | Out-Null
+      Log "  restored: $dstPath"
+    }
+  } else {
+    Log "Project tree restore skipped."
   }
 }
 
