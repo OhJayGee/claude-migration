@@ -86,6 +86,182 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 powershell -ExecutionPolicy Bypass -File .\claude-restore.ps1 -Archive C:\path\to\claude-migration.zip -DryRun
 ```
 
+## Step-by-step walkthrough (for first-time users)
+
+If you've never used Terminal or PowerShell before, follow these. Each step explains what's happening so you know what to expect.
+
+<details>
+<summary><strong>On macOS</strong></summary>
+
+### 1. Open Terminal
+
+`Applications → Utilities → Terminal`, or press `⌘ Space` and type `Terminal` then Enter. A black window opens with a prompt waiting for commands.
+
+### 2. Download the scripts
+
+Pick **one** of the following options:
+
+- **Easiest (no git needed)** — go to <https://github.com/OhJayGee/claude-migration>, click the green **Code** button → **Download ZIP**, and unzip it (double-click the downloaded file). The folder is your scripts.
+- **With git** — paste this in Terminal and press Enter:
+  ```bash
+  cd ~ && git clone https://github.com/OhJayGee/claude-migration.git
+  ```
+
+In either case, change into the folder:
+```bash
+cd ~/Downloads/claude-migration-main    # if you used the ZIP
+cd ~/claude-migration                    # if you used git clone
+```
+
+### 3. Make the scripts runnable (only needed for ZIP downloads)
+
+```bash
+chmod +x claude-backup.sh claude-restore.sh
+```
+
+This tells macOS the files are executable.
+
+### 4. Run the backup
+
+```bash
+./claude-backup.sh
+```
+
+You'll see status lines as it works (`[backup] Staging…`). When it finishes (usually 30 seconds to a few minutes), it prints something like:
+```
+[backup] Done: /Users/you/claude-migration-20260528-103000.tar.gz (113M)
+```
+
+That `.tar.gz` file in your home folder is your backup. Make a note of its full path.
+
+To also bundle your project source code (see "Optional: bundle project working trees" above for trade-offs):
+```bash
+./claude-backup.sh --include-projects
+```
+
+### 5. Transfer the backup file to the new Mac
+
+Pick whichever you find easiest. From fastest/simplest to most flexible:
+
+| Method | When to use it |
+|---|---|
+| **AirDrop** | Both Macs near each other. In Finder, right-click the `.tar.gz` → Share → AirDrop. |
+| **USB drive** | No network. Plug it in, drag the file onto it, plug into the new Mac, drag off. |
+| **iCloud Drive / Dropbox / Google Drive / OneDrive** | Both Macs signed into the same account. Drag the file into the synced folder; wait for it to upload, then it'll appear on the new Mac. |
+| **A direct network copy** (`scp`) | If you're comfortable with SSH. Replace the example: `scp ~/claude-migration-*.tar.gz user@newmac.local:~/`. |
+| **WeTransfer / Send Anywhere / Magic Wormhole** | The archive is very big (`--include-projects` with lots of code) and you need to send it over the internet. |
+
+For most people: AirDrop if both Macs are within Bluetooth range, otherwise iCloud Drive.
+
+### 6. On the new Mac
+
+Install Claude.app (from <https://claude.ai/download>) and the Claude Code CLI (run this in Terminal):
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+Then download the scripts the same way as step 2 above, change into the folder, and run a **dry-run** first to see what's about to happen:
+```bash
+./claude-restore.sh ~/claude-migration-20260528-103000.tar.gz --dry-run
+```
+
+Replace the filename with the actual path of the archive you copied over.
+
+If the dry-run looks right, run the real restore:
+```bash
+./claude-restore.sh ~/claude-migration-20260528-103000.tar.gz
+```
+
+It will ask you to confirm. Type `y` and press Enter.
+
+### 7. Finish
+
+The restore script ends with a numbered list of remaining steps:
+1. Run `claude` once, complete the login that opens in your browser.
+2. Open Claude.app and sign in.
+
+That's it. Open a project and try a session — your old sessions, plugins, MCP extensions, and Cowork Spaces should be there.
+
+</details>
+
+<details>
+<summary><strong>On Windows</strong></summary>
+
+### 1. Open PowerShell
+
+Press `Win + X` and click **Terminal** (Windows 11) or **Windows PowerShell** (Windows 10). A window opens with a prompt waiting for commands. PowerShell 5.1 is preinstalled on every supported Windows; nothing to download.
+
+### 2. Download the scripts
+
+Go to <https://github.com/OhJayGee/claude-migration> in your browser, click the green **Code** button → **Download ZIP**. Open the downloaded ZIP and extract it (right-click → Extract All). Then in PowerShell:
+
+```powershell
+cd $HOME\Downloads\claude-migration-main
+```
+
+(Adjust the path if you extracted somewhere else.)
+
+### 3. Allow the scripts to run (one-line, per-window only)
+
+By default Windows blocks unsigned scripts. Allow them just for this PowerShell window:
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+This change vanishes when you close the window — nothing permanent is altered.
+
+### 4. Run the backup
+
+```powershell
+.\claude-backup.ps1
+```
+
+You'll see `[backup]` status lines, then a final line like:
+```
+[backup] Done: C:\Users\you\claude-migration-20260528-103000.zip (113.4 MiB)
+```
+
+Note the full path of the `.zip` file. To also bundle your project source code:
+```powershell
+.\claude-backup.ps1 -IncludeProjects
+```
+
+### 5. Transfer the backup file to the new PC
+
+| Method | When to use it |
+|---|---|
+| **USB drive** | No network. Drag the `.zip` onto a flash drive, plug into the new PC, drag off. |
+| **OneDrive / Dropbox / Google Drive** | Both PCs signed into the same account. Drag the `.zip` into the synced folder; wait, it'll appear on the new PC. |
+| **Network share (SMB)** | Both PCs on the same LAN. Right-click the file → Send To → a mapped network drive. |
+| **WeTransfer / Send Anywhere** | Very big archive sent over the internet. |
+
+### 6. On the new PC
+
+Install Claude Desktop from <https://claude.ai/download> and the Claude Code CLI from <https://claude.ai/install>.
+
+Then download the scripts (step 2) and run a dry-run first:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\claude-restore.ps1 -Archive C:\Users\you\claude-migration-20260528-103000.zip -DryRun
+```
+
+If the dry-run looks right, run the real restore:
+
+```powershell
+.\claude-restore.ps1 -Archive C:\Users\you\claude-migration-20260528-103000.zip
+```
+
+Type `y` at the confirmation prompt.
+
+### 7. Finish
+
+Same as on Mac: run `claude` once to log in via the browser; open Claude Desktop and sign in. Your sessions, plugins, MCP extensions, and Cowork Spaces should appear.
+
+</details>
+
+If you get stuck at any step, copy the error message and open an issue: <https://github.com/OhJayGee/claude-migration/issues>.
+
 ## Why a script and not an official Anthropic flow
 
 There is no official Anthropic-blessed migration tool. The only first-party migration documentation is the **chat-memory** import/export at <https://support.claude.com/en/articles/12123587-import-and-export-your-memory-from-claude> — that covers the cross-conversation memory in Claude.app / claude.ai (server-side, per account) but **not** local files, MCP config, plugins, projects, Cowork sessions, or anything in `~/.claude/`.
